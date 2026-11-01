@@ -1,0 +1,31 @@
+[package]
+name = "wdpmcd"
+version = "0.3.0"
+edition = "2024"
+rust-version = "1.98"
+description = "Temperature-driven fan and front-panel LED daemon for the Western Digital My Cloud PR2100/PR4100 power management controller"
+license = "BSD-2-Clause"
+readme = "README.md"
+repository = "https://github.com/wakarei/wdpmcd"
+keywords = ["fan", "daemon", "freebsd", "nas", "pmc"]
+categories = ["hardware-support", "command-line-utilities"]
+publish = false
+
+[dependencies]
+libc = "0.2"
+nix = { version = "0.31", default-features = false, features = ["fs", "poll", "process", "signal", "term"] }
+signal-hook = { version = "0.4.5", default-features = false }
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+
+[profile.release]
+lto = true
+codegen-units = 1
+panic = "unwind"
+strip = true
