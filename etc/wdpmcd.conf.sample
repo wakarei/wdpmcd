@@ -1,0 +1,112 @@
+# wdpmcd.conf - sample configuration. Every setting shown is the default
+# unless noted. See wdpmcd.conf(5).
+
+# Serial device of the PMC. By default it is found by PCI identity
+# (8086:228c): /dev/cuauN on FreeBSD, /dev/ttyS2 on Debian.
+#device = /dev/cuau3
+
+# Seconds between temperature checks and fan updates.
+interval = 10
+
+# Seconds the loop may stall before the kernel kills it and the supervisor
+# starts it again. At least 2 * interval + pmc_timeout; 15 to 600.
+#watchdog = 60
+
+# Seconds between disk temperature reads. Sleeping disks are not woken.
+disk_interval = 30
+
+# Duty cycle (percent) used on any fault and at shutdown.
+safe_max = 99
+
+# Never run the fan slower than this (30-99).
+min_duty = 30
+
+# Disks whose temperature is read with smartctl. Repeat the line for more
+# disks; "disk = none" turns disk monitoring off.
+# FreeBSD:
+#disk = /dev/ada0
+#disk = /dev/ada1
+# Linux:
+#disk = /dev/sda
+#disk = /dev/sdb
+
+# Fan curve, one "curve" line per step: duty, then the CPU, disk and PMC
+# temperatures (degrees Celsius) at which that duty is needed. The hottest
+# sensor decides. Duties must rise from line to line.
+curve = 45 50 40 45
+curve = 60 60 44 50
+curve = 80 70 48 55
+curve = 99 80 52 60
+
+# Fan speed may fall at most drop_step points per drop_interval seconds, and
+# only once every sensor is hysteresis degrees below the step's limit.
+hysteresis = 3
+drop_step = 15
+drop_interval = 30
+
+# A fan below this speed (RPM) is treated as a fault.
+min_rpm = 400
+
+# Seconds between reads of the PMC status (power supplies) and drive presence
+# registers. Changes are logged to syslog; 0 disables status monitoring.
+status_interval = 10
+
+# Number of drive bays to report (2 on the PR2100, 4 on the PR4100).
+#drive_bays = 2
+
+# Directory for a node_exporter textfile-collector file. Unset: no file.
+#metrics_dir = /var/lib/node_exporter/textfile
+#metrics_file = wdpmcd.prom
+
+# Front-panel power LED (see docs/led-state-machine.md). A look is a colour
+# (off blue red green yellow) and optionally a pattern (steady blink pulse;
+# only blue pulses). The values shown are the defaults.
+#led = yes
+#led_starting = blue blink
+#led_up = blue
+#led_fault = red blink
+#led_pool = red
+#led_link = red
+#led_psu = red
+#led_capacity = red
+#led_ups = red
+#led_shutdown = blue blink
+
+# Pool health: "pool_cmd list -H -o health" is run every pool_interval seconds
+# and any line other than ONLINE shows led_pool. "none" turns it off.
+# Off by default: stock WD leaves the power LED on its up look for a degraded volume.
+#pool_cmd = /sbin/zpool
+#pool_interval = 60
+
+# Stock WD "action required" states, all steady red by default:
+#  - network link down: carrier of link_if (default re0 on FreeBSD; off
+#    elsewhere until set; "none" disables). An interface that cannot be read
+#    is never a fault.
+#  - power supply loss: a supply seen up (STA) that drops. A supply that was
+#    never up is never reported. Needs status_interval > 0.
+# Over-temperature (any sensor at/above the top curve step, cleared
+# hysteresis degrees below) blinks led_fault, like a fan fault.
+#link_if = re0
+# Helpers used on FreeBSD for the carrier state and the CPU temperature, run
+# as bounded child processes. Change these only if the programs live elsewhere.
+#ifconfig_cmd = /sbin/ifconfig
+#sysctl_cmd = /sbin/sysctl
+
+# Syslog datagram socket. The default is /var/run/log on FreeBSD and /dev/log
+# elsewhere.
+#syslog_socket = /var/run/log
+
+# Pool nearly full (stock WD alert 1001, steady red). ON by default: every
+# pool_interval seconds "capacity_cmd list -H -o capacity" is run and any pool
+# above capacity_limit percent shows led_capacity. "none" turns it off. A
+# query that fails keeps the previous verdict and is never a fault.
+#capacity_cmd = /sbin/zpool
+#capacity_limit = 95
+
+# UPS on battery (stock WD 0031, steady red). INERT unless ups_cmd is set;
+# there is no default. ups_cmd is a program and arguments (no shell) whose
+# output is a UPS status: the words OB (NUT) or ONBATT (apcupsd) mean on
+# battery. Run every ups_interval seconds. Examples:
+#ups_cmd = /usr/local/bin/upsc myups ups.status
+#ups_cmd = /usr/local/sbin/apcaccess -p STATUS
+#ups_interval = 15

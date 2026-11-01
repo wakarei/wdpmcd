@@ -1,0 +1,53 @@
+#!/bin/sh
+
+# PROVIDE: wdpmcd
+# REQUIRE: DAEMON
+# KEYWORD: shutdown
+#
+# Add the following lines to /etc/rc.conf to enable wdpmcd:
+#
+# wdpmcd_enable (bool):   Set to YES to run the fan controller.
+#                         Default: NO
+# wdpmcd_config (path):   Configuration file.
+#                         Default: /usr/local/etc/wdpmcd.conf
+# wdpmcd_device (path):   PMC serial device; empty means autodetect.
+#                         Default: empty
+#
+# Stopping the service, including at shutdown, leaves the fan at its safe
+# maximum: the daemon sets it on SIGTERM and stop_postcmd confirms it.
+
+# shellcheck shell=sh disable=SC1091,SC2034,SC2154
+
+. /etc/rc.subr
+
+name="wdpmcd"
+desc="Fan control for the WD My Cloud PMC"
+rcvar="wdpmcd_enable"
+
+load_rc_config "$name"
+
+: "${wdpmcd_enable:=NO}"
+: "${wdpmcd_config:=/usr/local/etc/wdpmcd.conf}"
+: "${wdpmcd_device:=}"
+
+wdpmcd_bin="/usr/local/sbin/wdpmcd"
+wdpmcd_opts="-f ${wdpmcd_config}"
+if [ -n "${wdpmcd_device}" ]; then
+	wdpmcd_opts="${wdpmcd_opts} -D ${wdpmcd_device}"
+fi
+
+pidfile="/var/run/${name}.pid"
+command="/usr/sbin/daemon"
+command_args="-f -P ${pidfile} -r -R 5 -t ${name} ${wdpmcd_bin} ${wdpmcd_opts}"
+
+stop_postcmd="wdpmcd_safe_max"
+
+wdpmcd_safe_max()
+{
+	# Second line of defence: the daemon has exited, so the port is free.
+	# shellcheck disable=SC2086
+	"${wdpmcd_bin}" ${wdpmcd_opts} -s 99 || \
+	    warn "could not confirm the fan at 99%"
+}
+
+run_rc_command "$1"

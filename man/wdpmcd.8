@@ -1,0 +1,221 @@
+.Dd October 29, 2026
+.Dt WDPMCD 8
+.Os
+.Sh NAME
+.Nm wdpmcd
+.Nd fan control daemon for the WD My Cloud power management controller
+.Sh SYNOPSIS
+.Nm
+.Op Fl d
+.Op Fl f Ar conf
+.Op Fl p Ar pidfile
+.Op Fl D Ar device
+.Nm
+.Op Fl f Ar conf
+.Op Fl D Ar device
+.Fl q | n | s Ar percent
+.Nm
+.Fl V | h
+.Sh DESCRIPTION
+The
+.Nm
+daemon keeps a Western Digital My Cloud PR2100 or PR4100 cool.
+The fan is driven by the power management controller (PMC), a
+microcontroller that is reached over a serial port at 9600 baud.
+.Nm
+reads the CPU, the disks and the PMC's own temperature, chooses a fan duty
+cycle from a configurable curve and writes it back to the PMC.
+.Pp
+The daemon runs in the foreground and logs to
+.Xr syslog 3 .
+Use
+.Xr daemon 8
+or a service manager to run it in the background; the supplied
+.Xr rc 8
+script and systemd unit do so.
+.Pp
+The options are as follows:
+.Bl -tag -width indent
+.It Fl d
+Also log to standard error, including debug messages.
+.It Fl D Ar device
+Use
+.Ar device
+as the PMC serial port instead of detecting it.
+.It Fl f Ar conf
+Read settings from
+.Ar conf .
+The default is
+.Pa /usr/local/etc/wdpmcd.conf
+on
+.Fx
+and
+.Pa /etc/wdpmcd.conf
+elsewhere.
+A missing default file means built-in defaults; a missing file named
+with
+.Fl f
+is an error.
+.It Fl h
+Print a usage summary and exit.
+.It Fl n
+Dry run: read all sensors, print them and the duty cycle the curve would
+choose, and exit.
+Nothing is written to the PMC.
+.It Fl p Ar pidfile
+Write the process ID to
+.Ar pidfile .
+.It Fl q
+Query: print the fan duty cycle, fan speed and PMC temperature, and exit.
+Nothing is written to the PMC.
+.It Fl s Ar percent
+Set the fan duty cycle once, read it back to confirm it, and exit.
+The value must be between 30 and 99.
+.It Fl V
+Print the version and exit.
+.El
+.Ss Safety
+The fan is never commanded below 30 percent.
+A request outside 30 to 99 percent is refused before anything is sent.
+.Pp
+Whenever the daemon cannot trust its picture of the machine it sets the safe
+maximum, 99 percent unless
+.Cm safe_max
+says otherwise, and reads it back.
+This happens when
+.Bl -bullet -compact
+.It
+the PMC is silent, answers with garbage, or answers
+.Ql ERR ;
+.It
+any sensor cannot be read or reports an implausible value;
+.It
+a reading is older than three intervals;
+.It
+the fan setting is not confirmed by the read-back; or
+.It
+the fan turns slower than
+.Cm min_rpm .
+.El
+.Pp
+The fan is held at the safe maximum until the cause has gone.
+Increases of the duty cycle take effect at once; decreases are limited in
+size and rate and need the temperatures to be below the limit by the
+hysteresis.
+.Pp
+On
+.Dv SIGTERM
+or
+.Dv SIGINT
+the daemon sets the safe maximum, retries until the PMC confirms it, and
+exits.
+If it cannot, it exits with a non-zero status.
+The
+.Xr rc 8
+script and systemd unit run
+.Nm Fl s Ar 99
+once more after the daemon has stopped.
+.Sh ARCHITECTURE
+.Nm
+is a single thread running a single
+.Xr poll 2
+loop.
+It starts no worker threads and never blocks: the serial port is opened
+non-blocking, and every external command it depends on
+.Pq Xr smartctl 8 , Xr zpool 8 , Xr ifconfig 8 , Xr sysctl 8
+runs as a child process whose output is collected from a non-blocking pipe.
+Every wait is expressed as a deadline held by the loop.
+.Pp
+A helper that has not finished by its deadline is killed and reaped with
+.Xr waitpid 2
+without blocking, and no second command of the same kind is started until it
+has been reaped.
+Losing a helper costs one reading, and a reading that stays missing long
+enough drives the fan up; it can never delay a fan write.
+.Pp
+The loop re-arms the watchdog on every iteration.
+If it stops making progress the kernel ends the process, the supervisor starts
+.Nm
+again, and start-up sets the safe maximum before anything else.
+.Pp
+The crate is compiled with
+.Ql #![forbid(unsafe_code)]
+and contains no
+.Ql unsafe
+blocks.
+.Sh ENVIRONMENT
+.Bl -tag -width ".Ev WDPMCD_SYSLOG_SOCKET"
+.It Ev WDPMCD_SYSLOG_SOCKET
+Path of the
+.Xr syslogd 8
+socket, overriding
+.Cm syslog_socket .
+The default is
+.Pa /var/run/log
+on
+.Fx
+and
+.Pa /dev/log
+elsewhere.
+.El
+.Sh SIGNALS
+.Bl -tag -width ".Dv SIGTERM"
+.It Dv SIGHUP
+Reread the configuration file.
+If it is invalid the old settings stay in force.
+The device and pidfile are not changed.
+.It Dv SIGTERM , SIGINT
+Set the safe maximum and exit.
+.It Dv SIGALRM
+Watchdog.
+The loop arms it again on every iteration; the default action, which ends the
+process, is left in place.
+A loop that wedges therefore dies instead of holding a fan setting it can no
+longer revisit.
+.It Dv SIGCHLD
+Only wakes the loop.
+Helper exits are collected when their output pipes reach end-of-file.
+.It Dv SIGPIPE
+Ignored; a closed syslog socket is reported, not fatal.
+.El
+.Sh FILES
+.Bl -tag -width ".Pa /usr/local/etc/wdpmcd.conf" -compact
+.It Pa /usr/local/etc/wdpmcd.conf
+Configuration on
+.Fx .
+.It Pa /etc/wdpmcd.conf
+Configuration on Linux.
+.It Pa /var/run/wdpmcd.pid
+Pidfile used by the
+.Xr rc 8
+script.
+.El
+.Sh EXIT STATUS
+.Ex -std
+Command line errors exit with status 2.
+.Sh EXAMPLES
+Check that the PMC answers:
+.Pp
+.Dl # wdpmcd -q
+.Pp
+Run the fan at 70 percent until the next daemon cycle or restart:
+.Pp
+.Dl # wdpmcd -s 70
+.Sh SEE ALSO
+.Xr wdpmcd.conf 5 ,
+.Xr daemon 8 ,
+.Xr smartctl 8
+.Sh HISTORY
+.Nm
+first appeared in version 0.1.0.
+.Sh AUTHORS
+.An Rei Walker
+.Sh CAVEATS
+Only the PR2100 has been tested.
+The PR4100 and EX4100 use the same PMC protocol and are expected to work.
+.Pp
+The serial port is locked while the daemon runs, so
+.Fl q
+and
+.Fl s
+cannot be used at the same time as the daemon.

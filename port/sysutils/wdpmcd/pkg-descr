@@ -1,0 +1,11 @@
+wdpmcd controls the fan and the front-panel power LED of Western Digital My
+Cloud PR2100 and PR4100 NAS enclosures. It reads the CPU, disk and controller temperatures, picks a duty
+cycle from a configurable curve and sends it to the power management
+controller over its serial port.
+
+Any fault - a silent or confused controller, a lost sensor, stale data, a
+stopped fan - drives the fan to its safe maximum, and the fan is never run
+below 30 percent. The daemon runs one thread and waits in one poll(2) call, so
+a slow disk or a stuck diagnostic program costs one reading, never a fan cycle.
+A watchdog ends the process if that loop stops making progress; the rc script
+starts it again, and start-up puts the fan at the safe maximum first.

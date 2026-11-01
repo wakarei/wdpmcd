@@ -1,0 +1,22 @@
+[Unit]
+Description=WD PMC fan control
+Documentation=man:wdpmcd(8)
+After=systemd-udevd.service
+
+[Service]
+Type=simple
+RuntimeDirectory=wdpmcd
+ExecStart=/usr/local/sbin/wdpmcd -p /run/wdpmcd/wdpmcd.pid
+ExecStopPost=-/usr/local/sbin/wdpmcd -s 99
+Restart=always
+RestartSec=2
+StartLimitIntervalSec=0
+TimeoutStopSec=20
+NoNewPrivileges=yes
+ProtectHome=yes
+ProtectSystem=strict
+PrivateTmp=yes
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

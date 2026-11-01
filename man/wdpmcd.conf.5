@@ -1,0 +1,258 @@
+.Dd October 29, 2026
+.Dt WDPMCD.CONF 5
+.Os
+.Sh NAME
+.Nm wdpmcd.conf
+.Nd configuration file for wdpmcd
+.Sh DESCRIPTION
+The
+.Xr wdpmcd 8
+configuration file contains one
+.Ar key No = Ar value
+setting per line.
+Blank lines are ignored, and everything from a
+.Ql #
+to the end of the line is a comment.
+Unknown keys, malformed values and values outside the stated range make the
+whole file invalid.
+.Pp
+Times are in seconds and may have a fractional part.
+Temperatures are in degrees Celsius.
+.Sh SETTINGS
+.Bl -tag -width Ds
+.It Cm device
+Serial device of the PMC.
+By default it is found by its PCI identity, 8086:228c.
+.It Cm pidfile
+Pidfile; the
+.Fl p
+option overrides it.
+.It Cm interval
+Time between sensor reads and fan updates, 0.1 to 3600.
+The default is 10.
+.It Cm watchdog
+Seconds the loop may go without finishing an iteration before the kernel ends
+the process, 15 to 600.
+It must be at least twice
+.Cm interval
+plus
+.Cm pmc_timeout ,
+so a slow but healthy cycle is not mistaken for a hang.
+The supervisor starts
+.Xr wdpmcd 8
+again, and start-up sets the safe maximum.
+The default is 60.
+.It Cm disk_interval
+Time between disk temperature reads, 0.1 to 86400.
+It is never shorter than
+.Cm interval .
+The default is 30.
+.It Cm safe_max
+Duty cycle in percent used after any fault and at exit, 30 to 99.
+It must not be below
+.Cm min_duty .
+The default is 99.
+.It Cm min_duty
+Lowest duty cycle the curve may produce, 30 to 99.
+The default is 30, which is also the absolute limit.
+.It Cm status_interval
+Time between reads of the PMC power supply and drive presence registers, 0.5 to 86400.
+Changes are logged to syslog.
+0 turns status monitoring off.
+The default is 10.
+.It Cm drive_bays
+Number of drive bays reported, 1 to 4.
+The default is 2.
+.It Cm metrics_dir
+Directory in which a node_exporter textfile collector file is written atomically
+after every status read.
+By default no file is written.
+.It Cm metrics_file
+Name of that file, a plain name ending in
+.Ql .prom .
+The default is
+.Pa wdpmcd.prom .
+.It Cm min_rpm
+A fan slower than this is treated as a fault.
+The default is 400.
+.It Cm led
+Control the front-panel power LED, yes or no.
+The default is yes.
+.It Cm led_starting , led_up , led_fault , led_pool , led_shutdown
+How the LED looks while starting (blinking blue), when up (steady blue), on
+a fan fail-safe (blinking red), on a degraded pool (steady red) and after a
+clean stop (blinking blue).
+A value is a colour, one of off, blue, red, green or yellow, optionally
+followed by steady, blink or pulse.
+Every colour works steadily or blinking.
+The pulse register carries one bit, so pulse belongs to blue and any other
+colour with pulse is an error.
+.It Cm pool_cmd
+Program run as
+.Ql pool_cmd list -H -o health
+to find out whether a pool is not ONLINE.
+The value none disables the check.
+The default is /sbin/zpool on FreeBSD and /usr/sbin/zpool elsewhere.
+.It Cm pool_interval
+Time between pool checks (health and capacity), 0.1 to 86400.
+The default is 60.
+.It Cm capacity_cmd
+Program run as
+.Ql capacity_cmd list -H -o capacity .
+While any pool is fuller than
+.Cm capacity_limit
+the LED shows
+.Cm led_capacity
+(steady red, as the stock firmware does).
+On by default; the value none disables it.
+A query that fails never counts as a fault.
+.It Cm capacity_limit
+Percent, 1 to 100.
+The default is 95.
+.It Cm led_capacity , led_ups
+Looks for a nearly full pool and for a UPS on battery.
+The default for both is steady red.
+.It Cm ups_cmd
+A program and arguments, run without a shell, that prints the UPS status.
+The word OB (NUT) or ONBATT (apcupsd) means on battery and shows
+.Cm led_ups .
+There is no default; without it the UPS state is inert.
+.It Cm ups_interval
+Time between UPS checks, 0.1 to 86400.
+The default is 15.
+.It Cm disk
+A disk to monitor with
+.Xr smartctl 8 .
+May be repeated.
+The hottest disk is used.
+.Ql none
+turns disk monitoring off.
+The default is
+.Pa /dev/ada0
+and
+.Pa /dev/ada1
+on
+.Fx ,
+.Pa /dev/sda
+and
+.Pa /dev/sdb
+on Linux.
+Disks in standby are not woken; they are assumed to be at least 35 degrees.
+.It Cm smartctl
+Path of
+.Xr smartctl 8 .
+.It Cm smartctl_timeout
+Time allowed for one
+.Xr smartctl 8
+run, 0.1 to 60.
+The default is 5.
+.It Cm cpu_temp_file
+Read the CPU temperature, in millidegrees, from this file instead of
+.Va dev.cpu.N.temperature
+.Pq Fx
+or the hwmon
+.Ql coretemp
+driver
+.Pq Linux .
+.It Cm sysctl_cmd
+Program run as
+.Ql sysctl_cmd -n hw.ncpu
+once, and then as
+.Ql sysctl_cmd -n dev.cpu.0.temperature dev.cpu.1.temperature ...
+to read the CPU temperature of every core on
+.Fx ,
+because the daemon itself makes no
+.Xr sysctl 3
+calls.
+The hottest core counts.
+A missing or unparsable value, or a helper that does not answer in time,
+counts as a failed CPU reading.
+The default is /sbin/sysctl.
+.It Cm syslog_socket
+Path of the
+.Xr syslogd 8
+datagram socket.
+The default is
+.Pa /var/run/log
+on
+.Fx
+and
+.Pa /dev/log
+elsewhere.
+.It Cm link_if
+Interface whose carrier is watched, for example
+.Ql re0 .
+When it goes down the LED shows
+.Cm led_link .
+The default is
+.Ql re0
+on
+.Fx ;
+it is off elsewhere until set.
+.It Cm led_link
+Look for a network link that has no carrier.
+The default is steady red.
+.It Cm ifconfig_cmd
+Program run as
+.Ql ifconfig_cmd link_if
+to read the carrier state on
+.Fx .
+Output that says neither
+.Ql status: active
+nor
+.Ql status: no carrier
+is ignored and keeps the previous verdict.
+The default is /sbin/ifconfig.
+.It Cm curve
+One step of the fan curve:
+.Ar duty cpu disk pmc .
+The step applies when any of the CPU, disk or PMC temperatures reaches its
+limit; the highest applicable step wins.
+May be repeated.
+Duties must be between 30 and 99 and rise strictly from line to line.
+Below the first step the fan runs at
+.Cm min_duty .
+The default is
+.Bd -literal -offset indent
+curve = 45 50 40 45
+curve = 60 60 44 50
+curve = 80 70 48 55
+curve = 99 80 52 60
+.Ed
+.It Cm hysteresis
+Degrees below a step's limits that every sensor must be before the fan may
+slow down from that step, 0 to 20.
+The default is 3.
+.It Cm drop_step
+Largest decrease of the duty cycle at one time, in percentage points.
+The default is 15.
+.It Cm drop_interval
+Least time between decreases, 0 to 3600.
+The default is 30.
+.It Cm pmc_timeout
+Time allowed for one exchange with the PMC, 0.1 to 30.
+The default is 5.
+.It Cm rpm_delay
+Time between setting the fan and checking its speed, 0 to 60.
+The default is 2.
+.It Cm startup_settle
+Time at the safe maximum after start, 0 to 120.
+The default is 6.
+.It Cm discover_timeout
+Time to wait for the PMC UART to appear at boot, 0 to 600.
+The default is 20.
+.It Cm max_failures
+The daemon exits, for its supervisor to restart, after this many
+consecutive cycles in which the PMC did not accept a fan setting.
+The default is 30.
+.El
+.Sh FILES
+.Bl -tag -width ".Pa /usr/local/etc/wdpmcd.conf.sample" -compact
+.It Pa /usr/local/etc/wdpmcd.conf
+.It Pa /usr/local/etc/wdpmcd.conf.sample
+.It Pa /etc/wdpmcd.conf
+.El
+.Sh SEE ALSO
+.Xr wdpmcd 8
+.Sh AUTHORS
+.An Rei Walker

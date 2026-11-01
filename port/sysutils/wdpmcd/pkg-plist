@@ -1,0 +1,5 @@
+sbin/wdpmcd
+etc/rc.d/wdpmcd
+@sample etc/wdpmcd.conf.sample
+share/man/man5/wdpmcd.conf.5.gz
+share/man/man8/wdpmcd.8.gz
