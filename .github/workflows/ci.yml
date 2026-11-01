@@ -1,0 +1,68 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  linux:
+    name: Linux
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - run: cargo fmt --check
+      - run: cargo clippy --all-targets -- -D warnings
+      - run: cargo build --release --locked
+
+  msrv:
+    name: Minimum supported Rust
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read rust-version
+        id: msrv
+        run: echo "version=$(sed -n 's/^rust-version = "\(.*\)"/\1/p' Cargo.toml)" >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ steps.msrv.outputs.version }}
+      - run: cargo build --locked
+
+  safe-rust:
+    name: Safe Rust
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: No unsafe outside comments
+        run: |
+          hits=$(grep -rn --include='*.rs' -E '\bunsafe\b' src \
+            | grep -v 'forbid(unsafe_code)' \
+            | grep -vE ':[0-9]+: *//' || true)
+          if [ -n "$hits" ]; then
+            echo "::error::unsafe code found:"
+            echo "$hits"
+            exit 1
+          fi
+          grep -q 'forbid(unsafe_code)' src/main.rs
+
+  freebsd:
+    name: FreeBSD 15.1
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: vmactions/freebsd-vm@v1
+        with:
+          release: "15.1"
+          usesh: true
+          prepare: pkg install -y rust smartmontools
+          run: |
+            cargo fmt --check
+            cargo clippy --all-targets -- -D warnings
+            cargo build --release --locked
+            mandoc -Tlint -Wwarning man/wdpmcd.8 man/wdpmcd.conf.5
